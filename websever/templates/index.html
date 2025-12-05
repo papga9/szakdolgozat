@@ -25,7 +25,7 @@
     <div class="card">
         <h1>System Control</h1>
         
-        <div class="status {% if state.is_running %}running{% else %}stopped{% endif %}">
+        <div id="status-display" class="status {% if state.is_running %}running{% else %}stopped{% endif %}">
             Status: {% if state.is_running %}RUNNING{% else %}STOPPED{% endif %}
         </div>
         <br>
@@ -43,5 +43,30 @@
             </div>
         </form>
     </div>
+
+    <script>
+        function updateData() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const inputField = document.getElementById('float_input');
+                    if (inputField.value != data.target_value) {
+                        inputField.value = data.target_value;
+                    }
+
+                    const statusDiv = document.getElementById('status-display');
+                    if (data.is_running) {
+                        statusDiv.className = 'status running';
+                        statusDiv.innerText = 'Status: RUNNING';
+                    } else {
+                        statusDiv.className = 'status stopped';
+                        statusDiv.innerText = 'Status: STOPPED';
+                    }
+                })
+                .catch(error => console.error('Hiba:', error));
+        }
+
+        setInterval(updateData, 1000);
+    </script>
 </body>
 </html>
