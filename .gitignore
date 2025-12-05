@@ -215,5 +215,3 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-#google drive stuff
-desktop.ini
