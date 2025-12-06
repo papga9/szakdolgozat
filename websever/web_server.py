@@ -19,11 +19,6 @@ class ControlServer:
         self.app.add_url_rule('/api/status', view_func=self.get_status, methods=['GET'])
 
     def index(self):
-        """
-        Renders the web page. 
-        If POST: updates the state based on buttons.
-        If GET: shows current state.
-        """
         if request.method == 'POST':
             try:
                 input_val = request.form.get('float_input')
@@ -41,9 +36,6 @@ class ControlServer:
         return render_template('index.html', state=self.system_state)
 
     def get_status(self):
-        """
-        JSON Endpoint for external scripts to access data.
-        """
         return jsonify(self.system_state)
 
     def run(self):

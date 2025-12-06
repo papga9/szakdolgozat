@@ -4,16 +4,10 @@ import sys
 
 class ControlClient:
     def __init__(self, host="localhost", port=5000):
-        """Initialize the client with server details."""
         self.base_url = f"http://{host}:{port}"
         self.api_url = f"{self.base_url}/api/status"
 
     def get_status(self):
-        """
-        Fetches the current status from the server.
-        Returns a dictionary: {'target_value': float, 'is_running': bool}
-        Returns None if connection fails.
-        """
         try:
             response = requests.get(self.api_url, timeout=2)
             if response.status_code == 200:
@@ -29,9 +23,6 @@ class ControlClient:
             return None
 
     def set_target_value(self, value):
-        """
-        Sends a float value to the server to update the field.
-        """
         try:
             payload = {'float_input': value}
             
