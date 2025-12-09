@@ -1,0 +1,16 @@
+# Python project dependencies for szakdolgozat
+
+[project]
+name = "szakdolgozat"
+version = "0.1.0"
+requires-python = ">=3.9"
+
+[dependencies]
+flask = "*"
+requests = "*"
+RPi.GPIO = "*"
+smbus2 = "*"
+
+# Optional development dependencies
+[dev-dependencies]
+pytest = "*"

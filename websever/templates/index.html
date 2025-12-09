@@ -1,47 +1,136 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control Panel</title>
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; }
-        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 300px; }
-        h1 { text-align: center; color: #333; }
-        .form-group { margin-bottom: 1.5rem; }
-        label { display: block; margin-bottom: 0.5rem; color: #666; }
-        input[type="number"] { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; background-color: #f9fafb; cursor: not-allowed; }
-        .btn-group { display: flex; gap: 10px; }
-        button { flex: 1; padding: 0.75rem; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; color: white; transition: opacity 0.2s; }
-        button:hover { opacity: 0.9; }
-        .btn-start { background-color: #10b981; }
-        .btn-stop { background-color: #ef4444; }
-        .status { margin-top: 1rem; text-align: center; padding: 0.5rem; border-radius: 4px; font-weight: bold; }
-        .running { background-color: #d1fae5; color: #065f46; }
-        .stopped { background-color: #fee2e2; color: #991b1b; }
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #f0f2f5;
+        }
+
+        .card {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 300px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #666;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #f9fafb;
+            cursor: not-allowed;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .btn-start {
+            background-color: #10b981;
+        }
+
+        .btn-stop {
+            background-color: #ef4444;
+        }
+
+        .status {
+            margin-top: 1rem;
+            text-align: center;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .running {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+
+        .stopped {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
     </style>
 </head>
+
 <body>
     <div class="card">
         <h1>System Control</h1>
-        
+
+        <div class="status stopped" style="margin-bottom:0.75rem;background-color:#ffe4e6;color:#7f1d1d">
+            ⚠️ LASER SAFETY: Use certified goggles, avoid exposure and reflections.
+        </div>
+
         <div id="status-display" class="status {% if state.is_running %}running{% else %}stopped{% endif %}">
-            Status: {% if state.is_running %}RUNNING{% else %}STOPPED{% endif %}
+            Status: {% if state.is_running %}RUNNING{% elif state.is_homing %} HOMEING {% else %} STOPPED{% endif %}
         </div>
         <br>
 
         <form method="POST">
-            <div class="form-group">
-                <label for="float_input">Target Value (Float):</label>
-                <input type="number" step="any" id="float_input" name="float_input" 
-                       value="{{ state.target_value }}" readonly>
-            </div>
-
             <div class="btn-group">
                 <button type="submit" name="action" value="start" class="btn-start">Start</button>
                 <button type="submit" name="action" value="stop" class="btn-stop">Stop</button>
+                <button type="submit" name="action" value="home" class="btn-start"
+                    style="background-color:#3b82f6">Home</button>
             </div>
         </form>
+
+        <div class="form-group">
+            <label>Live Metrics:</label>
+            <div id="metrics" style="font-size:0.9rem;color:#333">
+                Pos: <span id="pos">-</span> mm<br>
+                Voltage: <span id="volt">-</span> V<br>
+                Best Pos: <span id="best_pos">-</span> mm<br>
+                Best Volt: <span id="best_volt">-</span> V<br>
+                Focal Len: <span id="focal">-</span> mm
+            </div>
+        </div>
+        <div class="form-group" style="color:#7f1d1d;background:#ffe4e6;padding:0.5rem;border-radius:4px">
+            Note: Ensure area is safe before starting; protect eyes and skin.
+        </div>
     </div>
 
     <script>
@@ -49,11 +138,6 @@
             fetch('/api/status')
                 .then(response => response.json())
                 .then(data => {
-                    const inputField = document.getElementById('float_input');
-                    if (inputField.value != data.target_value) {
-                        inputField.value = data.target_value;
-                    }
-
                     const statusDiv = document.getElementById('status-display');
                     if (data.is_running) {
                         statusDiv.className = 'status running';
@@ -62,6 +146,13 @@
                         statusDiv.className = 'status stopped';
                         statusDiv.innerText = 'Status: STOPPED';
                     }
+
+                    // update metrics
+                    document.getElementById('pos').innerText = data.current_pos_mm ?? '-';
+                    document.getElementById('volt').innerText = data.current_voltage ?? '-';
+                    document.getElementById('best_pos').innerText = data.best_pos_mm ?? '-';
+                    document.getElementById('best_volt').innerText = data.best_voltage ?? '-';
+                    document.getElementById('focal').innerText = data.focal_length ?? '-';
                 })
                 .catch(error => console.error('Hiba:', error));
         }
@@ -69,4 +160,5 @@
         setInterval(updateData, 1000);
     </script>
 </body>
+
 </html>

@@ -1,21 +1,24 @@
 import RPi.GPIO as GPIO
 import time
 
+
 class StepperMotor:
     def __init__(self, step_pin=23, dir_pin=24, enable_pin=25, full_steps=200, microsteps=16):
         self.step_pin = step_pin
         self.dir_pin = dir_pin
         self.enable_pin = enable_pin
-        
+
         self.steps_per_rev = full_steps * microsteps
-        
+
         # GPIO Setup
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.step_pin, GPIO.OUT)
         GPIO.setup(self.dir_pin, GPIO.OUT)
         GPIO.setup(self.enable_pin, GPIO.OUT)
-        
+
+        self.set_direction(1)
+
         self.disable()
 
     def enable(self):
@@ -28,6 +31,10 @@ class StepperMotor:
         self.disable()
         GPIO.cleanup()
 
+    def set_direction(self, direction):
+        # Convention: 1 = forward (HIGH), -1 = reverse (LOW)
+        GPIO.output(self.dir_pin, GPIO.HIGH if direction == 1 else GPIO.LOW)
+
     def move(self, dist_mm, lead_mm, speed_rps=0.5, progress_callback=None):
         """
         dist_mm: távolság mm-ben
@@ -35,21 +42,20 @@ class StepperMotor:
         speed_rps: sebesség (fordulat/mp)
         progress_callback: egy függvény, amit időnként meghív mozgás közben (pl. kijelzéshez)
         """
-        if lead_mm <= 0: return
+        if lead_mm <= 0:
+            return
 
         rotations = dist_mm / lead_mm
         total_steps = int(abs(rotations) * self.steps_per_rev)
         direction = 1 if rotations > 0 else -1
-        
-        # Irány beállítása
-        GPIO.output(self.dir_pin, GPIO.HIGH if direction == 1 else GPIO.LOW)
 
         # Késleltetés számítása
         delay = (1.0 / (self.steps_per_rev * speed_rps)) / 2.0
-        if delay < 0.000002: delay = 0.000002
+        if delay < 0.000002:
+            delay = 0.000002
 
         print(f"Mozgás indítása: {dist_mm} mm ({total_steps} lépés)")
-        
+
         self.enable()
         time.sleep(0.05)
 

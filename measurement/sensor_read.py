@@ -1,32 +1,47 @@
 import time
 import threading
 from smbus2 import SMBus, i2c_msg
+from collections import deque
+
 
 class VoltageSensor:
-    def __init__(self, i2c_addr=0x68, channel=0, res_bits=16, vref=2.048, board_scale=(5.06/2.048)):
+    def __init__(self, i2c_addr=0x68, channel=0, res_bits=12, vref=2.048, board_scale=(5.06/2.048), window_size: int = 50):
         self.i2c_addr = i2c_addr
         self.channel = channel
         self.res_bits = res_bits
         self.vref = vref
         self.board_scale = board_scale
-        
+
         # Belső változók
         self._running = False
         self._thread = None
         self._current_voltage = 0.0
         self._lock = threading.Lock()
+        # Rolling buffer for mean over past N samples
+        self._window_size = max(1, int(window_size))
+        self._samples = deque(maxlen=self._window_size)
 
         # Konfigurációs értékek számítása
-        if self.res_bits == 12: 
-            self._rb_cfg = 0b00; self._denom = 2**11 - 1; self._wait = 0.005
-        elif self.res_bits == 14: 
-            self._rb_cfg = 0b01; self._denom = 2**13 - 1; self._wait = 0.02
-        elif self.res_bits == 16: 
-            self._rb_cfg = 0b10; self._denom = 2**15 - 1; self._wait = 0.07
-        elif self.res_bits == 18: 
-            self._rb_cfg = 0b11; self._denom = 2**17 - 1; self._wait = 0.3
-        else: 
-            self._rb_cfg = 0b10; self._denom = 2**15 - 1; self._wait = 0.07
+        if self.res_bits == 12:
+            self._rb_cfg = 0b00
+            self._denom = 2**11 - 1
+            self._wait = 0.005
+        elif self.res_bits == 14:
+            self._rb_cfg = 0b01
+            self._denom = 2**13 - 1
+            self._wait = 0.02
+        elif self.res_bits == 16:
+            self._rb_cfg = 0b10
+            self._denom = 2**15 - 1
+            self._wait = 0.07
+        elif self.res_bits == 18:
+            self._rb_cfg = 0b11
+            self._denom = 2**17 - 1
+            self._wait = 0.3
+        else:
+            self._rb_cfg = 0b10
+            self._denom = 2**15 - 1
+            self._wait = 0.07
 
     def start(self):
         if not self._running:
@@ -49,7 +64,7 @@ class VoltageSensor:
                 while self._running:
                     # Config byte összeállítása
                     config_byte = ((self.channel & 0x03) << 5) | (1 << 7) | (self._rb_cfg << 2) | 0b00
-                    
+
                     try:
                         bus.write_byte(self.i2c_addr, config_byte)
                         time.sleep(self._wait + 0.001)
@@ -65,15 +80,33 @@ class VoltageSensor:
 
                         V_internal = (raw / self._denom) * self.vref
                         Vin_est = V_internal * self.board_scale
-                        
+
                         with self._lock:
                             self._current_voltage = Vin_est
-                            
+                            # Update mean buffer
+                            self._samples.append(Vin_est)
+
                     except OSError:
                         # I2C hiba esetén nem állunk meg, csak kihagyjuk a kört
                         pass
-                    
+
                     time.sleep(0.01)
         except Exception as e:
             print(f"SZENZOR HIBA: {e}")
             self._running = False
+
+    def set_window_size(self, window_size: int):
+        """Set window size for rolling mean (number of samples)."""
+        if window_size <= 0:
+            return
+        with self._lock:
+            self._window_size = int(window_size)
+            recent = list(self._samples)[-self._window_size:]
+            self._samples = deque(recent, maxlen=self._window_size)
+
+    def get_voltage_mean(self):
+        """Return arithmetic mean of the past N samples (N = current window size)."""
+        with self._lock:
+            if not self._samples:
+                return 0.0
+            return sum(self._samples) / len(self._samples)

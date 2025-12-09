@@ -1,0 +1,33 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run main",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "main.py"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Run web server",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "websever/web_server.py"
+            ],
+            "isBackground": true
+        },
+        {
+            "label": "Start all",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "python websever/web_server.py & python main.py"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}

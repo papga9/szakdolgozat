@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run main",
+            "type": "python",
+            "request": "launch",
+            "program": "./main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--lead-mm",
+                "2.0",
+                "--sensor-offset-mm",
+                "150.0",
+                "--max-travel-mm",
+                "200.0"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Run web server",
+            "type": "python",
+            "request": "launch",
+            "program": "./websever/web_server.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}

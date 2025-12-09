@@ -1,0 +1,29 @@
+{
+	"recommendations": [
+		"ms-python.pylint",
+		"ms-python.python",
+		"ms-toolsai.jupyter",
+		"ms-toolsai.jupyter-renderers",
+		"ms-python.autopep8",
+		"ms-vscode.hexeditor",
+		"ms-vscode-remote.remote-ssh",
+		"oderwat.indent-rainbow",
+		"formulahendry.auto-rename-tag",
+		"IBM.output-colorizer",
+		"wayou.vscode-todo-highlight",
+		"azurity.pcd-viewer",
+		"jebbs.plantuml",
+		"eamodio.gitlens",
+		"mhutchie.git-graph",
+		"donjayamanne.githistory",
+		"ms-vscode.cmake-tools",
+		"jeff-hykin.better-cpp-syntax",
+		"SoftwareApe.crustless",
+		"DavidAnson.vscode-markdownlint",
+		"ms-vscode.test-adapter-converter",
+		"matepek.vscode-catch2-test-adapter",
+		"streetsidesoftware.code-spell-checker",
+		"mhutchie.git-graph",
+		"donjayamanne.githistory"
+	]
+}
