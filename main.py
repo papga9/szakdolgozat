@@ -7,7 +7,7 @@ from typing import Tuple
 
 from measurement.motor_control import StepperMotor
 from measurement.endstop import Endstop
-from measurement.sensor_read import VoltageSensor
+from measurement.sensor_read import VoltageSensor, CameraSensor
 from measurement.config import cfg
 
 
@@ -40,14 +40,15 @@ class ApiClient:
 @dataclass
 class MeasurementParams:
     lead_mm: float = 8.0
-    laser_offset_mm: float = 0.0
-    sensor_offset_mm: float = 150.0
-    max_travel_mm: float = 100.0
+    laser_offset_mm: float = -32.0
+    sensor_offset_mm: float = 135.0
+    max_travel_mm: float = 280.0
     coarse_step_mm: float = 3.0
     fine_step_mm: float = 0.2
     max_swings: int = 5
     hysteresis: float = 0.05
     steps_threshold: int = 5
+    sensor: str = "voltage"
 
     @classmethod
     def from_args(cls) -> "MeasurementParams":
@@ -61,6 +62,12 @@ class MeasurementParams:
         p.add_argument("--max-swings", type=int, default=5)
         p.add_argument("--hysteresis", type=float, default=0.02, help="Voltage drop to trigger reversal")
         p.add_argument("--steps-threshold", type=int, default=5, help="Number of steps without improvement to stop")
+        p.add_argument(
+            "--sensor",
+            choices=["voltage", "camera"],
+            default="voltage",
+            help="Select the sensor backend: 'voltage' or 'camera'",
+        )
 
         a = p.parse_args()
 
@@ -74,6 +81,7 @@ class MeasurementParams:
             max_swings=a.max_swings,
             hysteresis=a.hysteresis,
             steps_threshold=a.steps_threshold,
+            sensor=a.sensor,
         )
 
 
@@ -84,7 +92,10 @@ class MeasurementRunner:
         self.motor = StepperMotor(step_pin=cfg.motor.step_pin, dir_pin=cfg.motor.dir_pin, enable_pin=cfg.motor.enable_pin)
         self.endstop = Endstop(pin=cfg.endstop.pin)
         self.homestop = Endstop(pin=cfg.homestop.pin)
-        self.sensor = VoltageSensor()
+        if self.params.sensor == "camera":
+            self.sensor = CameraSensor()
+        else:
+            self.sensor = VoltageSensor()
 
     def start(self):
         self.sensor.start()
@@ -154,7 +165,7 @@ class MeasurementRunner:
                     "is_running": True
                 })
                 lastupdate = time.time()
-            val = self.sensor.get_voltage()
+            val = self.sensor.get_value()
             if val > best_val:
                 best_val = val
                 best_pos_mm = pos_mm
@@ -171,9 +182,11 @@ class MeasurementRunner:
 
         return best_pos_mm, best_val
 
-    @staticmethod
-    def compute_focal_length(laser_offset_mm: float, sensor_offset_mm: float, lens_pos_mm: float) -> float:
-        return abs(sensor_offset_mm - lens_pos_mm)
+    def compute_focal_length(self, laser_offset_mm: float, sensor_offset_mm: float, lens_pos_mm: float) -> float:
+        laser_to_lense_mm = lens_pos_mm - laser_offset_mm
+        sensor_to_lense_mm = self.params.max_travel_mm - lens_pos_mm + sensor_offset_mm
+
+        return (laser_to_lense_mm*sensor_to_lense_mm)/(laser_to_lense_mm+sensor_to_lense_mm)
 
 
 class App:
