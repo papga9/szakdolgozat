@@ -1,4 +1,5 @@
 {
+    "terminal.integrated.suggest.enabled": false,
     "python.formatting.provider": "none",
     "python.linting.pylintEnabled": true,
     "python.linting.pycodestyleEnabled": true,

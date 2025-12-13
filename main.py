@@ -7,7 +7,8 @@ from typing import Tuple
 
 from measurement.motor_control import StepperMotor
 from measurement.endstop import Endstop
-from measurement.sensor_read import VoltageSensor, CameraSensor
+from measurement.voltage_sensor import VoltageSensor
+from measurement.camera_sensor import CameraSensor
 from measurement.config import cfg
 
 
@@ -40,28 +41,28 @@ class ApiClient:
 @dataclass
 class MeasurementParams:
     lead_mm: float = 8.0
-    laser_offset_mm: float = -32.0
+    laser_offset_mm: float = 40.0
     sensor_offset_mm: float = 135.0
     max_travel_mm: float = 280.0
     coarse_step_mm: float = 3.0
     fine_step_mm: float = 0.2
     max_swings: int = 5
     hysteresis: float = 0.05
-    steps_threshold: int = 5
+    steps_threshold: float = 150.0
     sensor: str = "voltage"
 
     @classmethod
     def from_args(cls) -> "MeasurementParams":
         p = argparse.ArgumentParser(description="Lens focal length measurement")
         p.add_argument("--lead-mm", type=float, default=8.0, help="Lead of screw (mm per rev)")
-        p.add_argument("--laser-offset-mm", type=float, default=0.0)
-        p.add_argument("--sensor-offset-mm", type=float, default=150.0)
-        p.add_argument("--max-travel-mm", type=float, default=100.0)
+        p.add_argument("--laser-offset-mm", type=float, default=40.0)
+        p.add_argument("--sensor-offset-mm", type=float, default=135.0)
+        p.add_argument("--max-travel-mm", type=float, default=280.0)
         p.add_argument("--coarse-step-mm", type=float, default=3.0)
         p.add_argument("--fine-step-mm", type=float, default=0.2)
         p.add_argument("--max-swings", type=int, default=5)
         p.add_argument("--hysteresis", type=float, default=0.02, help="Voltage drop to trigger reversal")
-        p.add_argument("--steps-threshold", type=int, default=5, help="Number of steps without improvement to stop")
+        p.add_argument("--steps-threshold", type=float, default=15.0, help="Distance in mm without improvement before reversing; halved after each swing")
         p.add_argument(
             "--sensor",
             choices=["voltage", "camera"],
@@ -118,6 +119,7 @@ class MeasurementRunner:
         print("Waiting for homing button press...")
         self.motor.set_direction(-1)
         last_check = time.time()
+
         while not self.homestop.is_pressed():
             # periodic stop check
             if time.time() - last_check > 0.5:
@@ -125,9 +127,12 @@ class MeasurementRunner:
                     print("Stop command received during homing; aborting.")
                     return
                 last_check = time.time()
-            time.sleep(0.05)
-            self.motor.move(dist_mm=1.0, lead_mm=self.params.lead_mm, speed_rps=1.0)
+            # time.sleep(0.05)
+            self.motor.move(dist_mm=1.0, lead_mm=self.params.lead_mm, speed_rps=0.4)
+
+        self.motor.move(dist_mm=2.0, lead_mm=self.params.lead_mm, speed_rps=0.4)
         self.api.update({"current_pos_mm": 0.0, "is_homing": False})
+        self.motor.set_direction(1)
 
     def search_peak(self) -> Tuple[float, float]:
         print("Searching peak...")
@@ -136,16 +141,17 @@ class MeasurementRunner:
         pos_mm = 0.0
         direction = 1
         swings = 0
-
+        self.motor.set_direction(direction)
         step = self.params.coarse_step_mm
-        number_of_steps_wrong_direction = 0
+        wrong_distance_mm = 0.0
+        current_threshold_mm = float(self.params.steps_threshold)
         lastupdate = time.time()
 
         while swings < self.params.max_swings and pos_mm < self.params.max_travel_mm:
-            if pos_mm + direction * step > self.params.max_travel_mm or pos_mm + direction * step <= 0:
-                break
+            # if pos_mm + direction * step > self.params.max_travel_mm or pos_mm + direction * step <= 0:
+            #     break
 
-            self.motor.move(dist_mm=step, lead_mm=self.params.lead_mm, speed_rps=2.0)
+            self.motor.move(dist_mm=step, lead_mm=self.params.lead_mm, speed_rps=0.4)
             if self.endstop.is_pressed():
                 print("Endstop pressed during scan; stopping movement.")
                 self.api.update({"is_running": False})
@@ -153,33 +159,40 @@ class MeasurementRunner:
             pos_mm += direction * step
             time.sleep(0.05)
             # check stop command from web
+            val = self.sensor.get_value()
             if time.time() - lastupdate > 0.5:
                 if self.check_stop():
                     print("Stop command received; aborting.")
                     break
                 self.api.update({
                     "current_pos_mm": pos_mm,
-                    "current_voltage": val,
+                    "current_value": val,
                     "best_pos_mm": best_pos_mm,
-                    "best_voltage": best_val,
+                    "best_value": best_val,
                     "is_running": True
                 })
                 lastupdate = time.time()
-            val = self.sensor.get_value()
             if val > best_val:
                 best_val = val
                 best_pos_mm = pos_mm
-            if best_val - val > self.params.hysteresis:
-                number_of_steps_wrong_direction += 1
+                wrong_distance_mm = 0.0
+                swing = 0
+            elif best_val - val > self.params.hysteresis and best_val > 3.5:
+                wrong_distance_mm += step
 
-            if number_of_steps_wrong_direction >= self.params.steps_threshold:
-                number_of_steps_wrong_direction = 0
+            if wrong_distance_mm >= current_threshold_mm:
+                wrong_distance_mm = 0.0
                 direction *= -1
                 swings += 1
                 self.motor.set_direction(direction)
                 step = max(self.params.fine_step_mm, step / 2.0)
-                print(f"Reversing direction. New step size: {step:.3f} mm. Swings: {swings}/{self.params.max_swings}")
+                current_threshold_mm = max(self.params.fine_step_mm, current_threshold_mm / 2.0)
+                print(
+                    f"Reversing direction. New step size: {step:.3f} mm, threshold: {current_threshold_mm:.3f} mm. "
+                    f"Swings: {swings}/{self.params.max_swings}"
+                )
 
+        print(f" {swings} < {self.params.max_swings} and {pos_mm} < {self.params.max_travel_mm}")
         return best_pos_mm, best_val
 
     def compute_focal_length(self, laser_offset_mm: float, sensor_offset_mm: float, lens_pos_mm: float) -> float:
@@ -226,7 +239,7 @@ class App:
                     if cmd == "home":
                         runner.home()
                     if cmd == "start":
-                        runner.home()
+                        # runner.home()
                         api.update({"is_running": True, "desired_cmd": None})
                         best_pos_mm, best_val = runner.search_peak()
                         focal = runner.compute_focal_length(params.laser_offset_mm, params.sensor_offset_mm, best_pos_mm)

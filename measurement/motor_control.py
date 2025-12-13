@@ -3,12 +3,12 @@ import time
 
 
 class StepperMotor:
-    def __init__(self, step_pin=5, dir_pin=12, enable_pin=6, full_steps=200, microsteps=16):
+    def __init__(self, step_pin=5, dir_pin=12, enable_pin=6, full_steps=200, microsteps=8):
         self.step_pin = step_pin
         self.dir_pin = dir_pin
         self.enable_pin = enable_pin
 
-        self.steps_per_rev = full_steps * microsteps
+        self.steps_per_rev = float(full_steps * microsteps)
 
         # GPIO Setup
         GPIO.setwarnings(False)
@@ -32,10 +32,10 @@ class StepperMotor:
         GPIO.cleanup()
 
     def set_direction(self, direction):
-        # Convention: 1 = forward (HIGH), -1 = reverse (LOW)
-        GPIO.output(self.dir_pin, GPIO.HIGH if direction == 1 else GPIO.LOW)
+        # Convention: 1 = forward (LOW), -1 = reverse (HIGH)
+        GPIO.output(self.dir_pin, GPIO.LOW if direction == 1 else GPIO.HIGH)
 
-    def move(self, dist_mm, lead_mm, speed_rps=0.5, progress_callback=None):
+    def move(self, dist_mm, lead_mm, speed_rps=0.01, progress_callback=None):
         """
         dist_mm: távolság mm-ben
         lead_mm: menetes szár emelkedése (mm/fordulat)
@@ -50,10 +50,9 @@ class StepperMotor:
         direction = 1 if rotations > 0 else -1
 
         # Késleltetés számítása
-        delay = (1.0 / (self.steps_per_rev * speed_rps)) / 2.0
+        delay = 1.0 / float(2 * self.steps_per_rev * speed_rps)
         if delay < 0.000002:
             delay = 0.000002
-
         print(f"Mozgás indítása: {dist_mm} mm ({total_steps} lépés)")
 
         self.enable()

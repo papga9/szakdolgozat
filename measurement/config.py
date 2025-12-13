@@ -26,6 +26,6 @@ class SystemConfig:
 
 cfg = SystemConfig(
     motor=MotorSettings(6, 12, 5, 10.0, 2000),
-    endstop=EndstopSettings(pin=18, is_normally_open=True),
-    homestop=EndstopSettings(pin=14, is_normally_open=True),
+    endstop=EndstopSettings(pin=14, is_normally_open=True),
+    homestop=EndstopSettings(pin=15, is_normally_open=True),
 )

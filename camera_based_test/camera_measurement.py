@@ -4,18 +4,19 @@ import glob
 import yaml
 import os
 import time
+import sys
 
 # --- FELHASZNÁLÓI KONFIGURÁCIÓ ---
 
-# 1. A kamera és a hozzáadott lencse közötti távolság (mm-ben)
-DISTANCE_LENS_CAM_MM = 20.0
+# 1. A kamera és a hozzáadott lencse elméleti síkja közötti távolság (mm-ben)
+DISTANCE_LENS_CAM_MM = 53
 
 # 2. A szenzor pixelmérete (mm-ben).
 # Pi Camera v2 (Sony IMX219) pixelmérete: 1.12 µm = 0.00112 mm
 SENSOR_PIXEL_SIZE_MM = 0.00112
 
 # 3. Sakktábla beállítások
-CHESSBOARD_SIZE = (9, 6)  # Belső sarkok száma (szélesség, magasság)
+CHESSBOARD_SIZE = (9, 7)  # Belső sarkok száma (szélesség, magasság)
 SQUARE_SIZE_MM = 20.0    # Négyzet mérete mm-ben
 
 # --- Egyéb beállítások ---
@@ -36,7 +37,8 @@ class CameraHandler:
             self.picam2 = Picamera2()
 
             # Pi Camera 2 konfig: 1640x1232 (Binning mód)
-            config = self.picam2.create_configuration(main={"size": (1640, 1232), "format": "BGR888"})
+            # Újabb Picamera2 API-konzisztencia: preview konfiguráció
+            config = self.picam2.create_preview_configuration(main={"size": (1640, 1232), "format": "BGR888"})
             self.picam2.configure(config)
             self.picam2.start()
 
@@ -44,11 +46,6 @@ class CameraHandler:
             print(">> Picamera2 (Raspberry Pi Camera) sikeresen inicializálva.")
         except ImportError:
             print(">> Picamera2 nem található. Visszatérés a szabványos USB webkamerához (cv2).")
-            self.cap = cv2.VideoCapture(0)
-        except Exception as e:
-            print(f">> Hiba a PiCamera indításakor: {e}. Visszatérés cv2-re.")
-            if self.picam2:
-                self.picam2.stop()
             self.cap = cv2.VideoCapture(0)
 
     def get_frame(self):
@@ -75,16 +72,22 @@ class CameraHandler:
 # ---------------------------------------------------
 
 
-def capture_images(phase_name):
+def capture_images(phase_name, cam):
     """
     Képeket készít a kamerával.
     """
-    cam = CameraHandler()
     images = []
 
     print(f"\n--- {phase_name} FÁZIS: Képek készítése ---")
-    print("Nyomj 'c'-t a kép készítéséhez.")
-    print("Nyomj 'q'-t a befejezéshez.")
+    # Headless környezet detektálása (nincs DISPLAY -> nincs GUI)
+    headless = os.environ.get("DISPLAY") in (None, "")
+
+    if headless:
+        print("GUI nem elérhető (nincs DISPLAY). Konzolos mód használata.")
+        print("Enter: kép készítése | 'q' + Enter: kilépés")
+    else:
+        print("Nyomj 'c'-t a kép készítéséhez.")
+        print("Nyomj 'q'-t a befejezéshez.")
 
     count = 0
     while True:
@@ -94,31 +97,58 @@ def capture_images(phase_name):
             time.sleep(1)
             continue
 
-        display_h = 600
-        h, w = frame.shape[:2]
-        ratio = display_h / h
-        display_frame = cv2.resize(frame, (int(w * ratio), int(h * ratio)))
+        # Sakktábla detektálása minden frame-en, csak akkor engedünk mentést,
+        # ha valóban megtaláltuk a mintát.
+        gray_live = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        ret_live, corners_live = cv2.findChessboardCorners(gray_live, CHESSBOARD_SIZE, None)
 
-        cv2.putText(display_frame, f"Kepek: {count} | 'c': Foto | 'q': Kesz", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        if headless:
+            # Konzolos vezérlés
+            cv2.imwrite('camera.png', frame)
+            cmd = input("[Enter]=kép | 'q'=kilépés: ").strip().lower()
+            if cmd == 'q':
+                break
+            if ret_live:
+                images.append(frame.copy())
+                count += 1
+                print(f"Kép rögzítve! ({count} db) — sakktábla DETEKTÁLVA")
+            else:
+                print("Sakktábla NEM található — a kép nem lett mentve.")
+        else:
+            display_h = 600
+            h, w = frame.shape[:2]
+            ratio = display_h / h
+            display_frame = cv2.resize(frame, (int(w * ratio), int(h * ratio)))
 
-        cv2.imshow(f'Capture - {phase_name}', display_frame)
+            status_text = "Sakktábla: TALÁLT" if ret_live else "Sakktábla: NINCS"
+            status_color = (0, 200, 0) if ret_live else (0, 0, 255)
+            cv2.putText(display_frame, f"Kepek: {count} | 'c': Foto | 'q': Kesz", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(display_frame, status_text, (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
 
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('c'):
-            images.append(frame.copy())
-            count += 1
-            print(f"Kép rögzítve! ({count} db)")
+            cv2.imshow(f'Capture - {phase_name}', display_frame)
 
-            inverted = cv2.bitwise_not(display_frame)
-            cv2.imshow(f'Capture - {phase_name}', inverted)
-            cv2.waitKey(50)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('c'):
+                if ret_live:
+                    images.append(frame.copy())
+                    count += 1
+                    print(f"Kép rögzítve! ({count} db) — sakktábla DETEKTÁLVA")
+                else:
+                    print("Sakktábla NEM található — a kép nem lett mentve.")
 
-        elif key == ord('q'):
-            break
+                inverted = cv2.bitwise_not(display_frame)
+                cv2.imshow(f'Capture - {phase_name}', inverted)
+                cv2.waitKey(50)
+
+            elif key == ord('q'):
+                break
 
     cam.release()
-    cv2.destroyAllWindows()
+    # Csak akkor csukjuk be az ablakokat, ha volt GUI
+    if os.environ.get("DISPLAY") not in (None, ""):
+        cv2.destroyAllWindows()
     return images
 
 
@@ -210,6 +240,7 @@ def calculate_lens_focal_length(mtx_cam, mtx_sys, d_mm, pixel_size_mm):
 
 def main():
     print("=== PI CAMERA 2 LENCSE KALIBRÁTOR ===")
+    cam = CameraHandler()
 
     mtx_cam = None
 
@@ -226,7 +257,7 @@ def main():
     if mtx_cam is None:
         print("\n--- 1. LÉPÉS: Kalibráljuk a PI KAMERÁT lencse NÉLKÜL ---")
         input("Győződj meg róla, hogy NINCS plusz lencse a kamera előtt. Nyomj Entert...")
-        imgs_cam = capture_images("KAMERA_ONLY")
+        imgs_cam = capture_images("KAMERA_ONLY", cam)
         mtx_cam = calibrate_system(imgs_cam, "KAMERA_ONLY")
 
         if mtx_cam is not None:
@@ -244,7 +275,7 @@ def main():
     print(f"Kérlek, helyezd az ismeretlen lencsét a Pi Camera elé {DISTANCE_LENS_CAM_MM} mm távolságra.")
     input("Ha készen állsz, nyomj Entert...")
 
-    imgs_sys = capture_images("RENDSZER_LENS")
+    imgs_sys = capture_images("RENDSZER_LENS", cam)
     mtx_sys = calibrate_system(imgs_sys, "RENDSZER_LENS")
 
     if mtx_sys is None:

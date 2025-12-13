@@ -23,6 +23,13 @@
             "request": "launch",
             "program": "./websever/web_server.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Run current file",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
         }
     ]
 }

@@ -3,13 +3,12 @@ import threading
 from smbus2 import SMBus, i2c_msg
 from collections import deque
 
-import cv2
-
-from measurement.sensor_base import SensorBase
+from .sensor_base import SensorBase
 
 
 class VoltageSensor(SensorBase):
     def __init__(self, i2c_addr=0x68, channel=0, res_bits=12, vref=2.048, board_scale=(5.06/2.048), window_size: int = 50):
+        SensorBase.__init__(self)
         self.i2c_addr = i2c_addr
         self.channel = channel
         self.res_bits = res_bits
