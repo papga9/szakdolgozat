@@ -41,22 +41,22 @@ class ApiClient:
 @dataclass
 class MeasurementParams:
     lead_mm: float = 8.0
-    laser_offset_mm: float = 40.0
-    sensor_offset_mm: float = 135.0
+    laser_offset_mm: float = 33.0
+    sensor_offset_mm: float = 131.0
     max_travel_mm: float = 280.0
     coarse_step_mm: float = 3.0
     fine_step_mm: float = 0.2
-    max_swings: int = 5
+    max_swings: int = 3
     hysteresis: float = 0.05
-    steps_threshold: float = 150.0
+    steps_threshold: float = 20.0
     sensor: str = "voltage"
 
     @classmethod
     def from_args(cls) -> "MeasurementParams":
         p = argparse.ArgumentParser(description="Lens focal length measurement")
         p.add_argument("--lead-mm", type=float, default=8.0, help="Lead of screw (mm per rev)")
-        p.add_argument("--laser-offset-mm", type=float, default=40.0)
-        p.add_argument("--sensor-offset-mm", type=float, default=135.0)
+        p.add_argument("--laser-offset-mm", type=float, default=33.0)
+        p.add_argument("--sensor-offset-mm", type=float, default=131.0)
         p.add_argument("--max-travel-mm", type=float, default=280.0)
         p.add_argument("--coarse-step-mm", type=float, default=3.0)
         p.add_argument("--fine-step-mm", type=float, default=0.2)
@@ -177,18 +177,29 @@ class MeasurementRunner:
                 best_pos_mm = pos_mm
                 wrong_distance_mm = 0.0
                 swing = 0
-            elif best_val - val > self.params.hysteresis and best_val > 3.5:
+            elif best_val - val > self.params.hysteresis and best_val > 0.35:
                 wrong_distance_mm += step
 
             if wrong_distance_mm >= current_threshold_mm:
                 wrong_distance_mm = 0.0
                 direction *= -1
                 swings += 1
+
+                # Move back to the best position before reversing to refine locally
+                delta_to_best = best_pos_mm - pos_mm
+                if abs(delta_to_best) > 1e-6:
+                    # Move the motor back to best_pos_mm
+                    self.motor.set_direction(1 if delta_to_best > 0 else -1)
+                    self.motor.move(dist_mm=abs(delta_to_best), lead_mm=self.params.lead_mm, speed_rps=0.4)
+                    pos_mm = best_pos_mm
+
+                # Now reverse to probe the other side of the peak
+                direction = -1 if direction == 1 else 1
                 self.motor.set_direction(direction)
                 step = max(self.params.fine_step_mm, step / 2.0)
                 current_threshold_mm = max(self.params.fine_step_mm, current_threshold_mm / 2.0)
                 print(
-                    f"Reversing direction. New step size: {step:.3f} mm, threshold: {current_threshold_mm:.3f} mm. "
+                    f"Refining near best. Step: {step:.3f} mm, threshold: {current_threshold_mm:.3f} mm. "
                     f"Swings: {swings}/{self.params.max_swings}"
                 )
 
@@ -196,8 +207,11 @@ class MeasurementRunner:
         return best_pos_mm, best_val
 
     def compute_focal_length(self, laser_offset_mm: float, sensor_offset_mm: float, lens_pos_mm: float) -> float:
-        laser_to_lense_mm = lens_pos_mm - laser_offset_mm
-        sensor_to_lense_mm = self.params.max_travel_mm - lens_pos_mm + sensor_offset_mm
+        print(
+            f"Computing focal length with laser_offset_mm={laser_offset_mm}, sensor_offset_mm={sensor_offset_mm}, lens_pos_mm={lens_pos_mm} max_travel_mm={self.params.max_travel_mm} params")
+        # 5.0 lense holder width compensation
+        laser_to_lense_mm = lens_pos_mm + laser_offset_mm+5.0
+        sensor_to_lense_mm = self.params.max_travel_mm - lens_pos_mm - 5.0 + sensor_offset_mm
 
         return (laser_to_lense_mm*sensor_to_lense_mm)/(laser_to_lense_mm+sensor_to_lense_mm)
 

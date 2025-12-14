@@ -3,7 +3,7 @@ import time
 
 
 class StepperMotor:
-    def __init__(self, step_pin=5, dir_pin=12, enable_pin=6, full_steps=200, microsteps=8):
+    def __init__(self, step_pin=6, dir_pin=12, enable_pin=5, full_steps=200, microsteps=8):
         self.step_pin = step_pin
         self.dir_pin = dir_pin
         self.enable_pin = enable_pin
